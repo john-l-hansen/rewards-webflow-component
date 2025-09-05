@@ -1,4 +1,54 @@
 <script>
+// Add CSS styles for JoySprouts collections
+const style = document.createElement('style');
+style.textContent = `
+    .joysprouts-tab-nav {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    
+    .joysprouts-tab-btn {
+        padding: 10px 20px;
+        border: 2px solid #007bff;
+        background: white;
+        color: #007bff;
+        cursor: pointer;
+        border-radius: 5px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    
+    .joysprouts-tab-btn:hover {
+        background: #f8f9fa;
+    }
+    
+    .joysprouts-tab-btn.active {
+        background: #007bff;
+        color: white;
+    }
+    
+    .joysprouts-active-collection,
+    .joysprouts-completed-collection {
+        min-height: 200px;
+    }
+    
+    .joysprouts-completed-collection {
+        display: none;
+    }
+    
+    .joysprouts-item.completed {
+        opacity: 0.7;
+        border-left: 4px solid #28a745;
+    }
+    
+    .joysprouts-item.completed .complete-button {
+        background: #28a745 !important;
+        color: white !important;
+    }
+`;
+document.head.appendChild(style);
+
 document.addEventListener("DOMContentLoaded", async () => {
     console.log("JoySprouts script loaded");
 
@@ -45,31 +95,121 @@ document.addEventListener("DOMContentLoaded", async () => {
                 console.warn("Button with ID 'complete-joysprouts-button' not found");
             }
 
-            // Update listing page (Collection List)
-            const joysproutsItems = document.querySelectorAll(".joysprouts-item");
-            console.log("Found", joysproutsItems.length, "JoySprouts items in listing");
-            joysproutsItems.forEach(item => {
-                const itemId = item.getAttribute("data-joysprouts-id");
-                if (completedJoySprouts.includes(itemId)) {
-                    item.classList.add("completed");
-                    const listButton = item.querySelector(".complete-button");
-                    if (listButton) {
-                        listButton.disabled = true;
-                        listButton.textContent = "Completed";
-                        listButton.classList.add("completed");
-                        console.log("Listing item button updated:", itemId);
-                    }
-                    // Optional: Remove item instead (uncomment to enable)
-                    item.remove();
-                }
-            });
+            // Filter collections based on completion status
+            await filterJoySproutsCollections(completedJoySprouts);
         } catch (error) {
             console.error("Error updating JoySprouts UI:", error);
         }
     }
 
+    // Function to filter JoySprouts collections based on completion status
+    async function filterJoySproutsCollections(completedJoySprouts) {
+        try {
+            // Get all JoySprouts items from both collections
+            const allJoySproutsItems = document.querySelectorAll(".joysprouts-item");
+            console.log("Found", allJoySproutsItems.length, "JoySprouts items total");
+
+            // Separate items into active and completed collections
+            const activeCollection = document.querySelector(".joysprouts-active-collection");
+            const completedCollection = document.querySelector(".joysprouts-completed-collection");
+
+            if (!activeCollection || !completedCollection) {
+                console.warn("Collection containers not found. Please add classes 'joysprouts-active-collection' and 'joysprouts-completed-collection' to your collection containers.");
+                return;
+            }
+
+            // Clear existing content
+            activeCollection.innerHTML = "";
+            completedCollection.innerHTML = "";
+
+            // Process each JoySprouts item
+            allJoySproutsItems.forEach(item => {
+                const itemId = item.getAttribute("data-joysprouts-id");
+                const isCompleted = completedJoySprouts.includes(itemId);
+                
+                // Clone the item to avoid moving the original
+                const clonedItem = item.cloneNode(true);
+                
+                if (isCompleted) {
+                    // Add to completed collection
+                    clonedItem.classList.add("completed");
+                    const listButton = clonedItem.querySelector(".complete-button");
+                    if (listButton) {
+                        listButton.disabled = true;
+                        listButton.textContent = "Completed";
+                        listButton.classList.add("completed");
+                    }
+                    completedCollection.appendChild(clonedItem);
+                    console.log("Added to completed collection:", itemId);
+                } else {
+                    // Add to active collection
+                    activeCollection.appendChild(clonedItem);
+                    console.log("Added to active collection:", itemId);
+                }
+            });
+
+            console.log("Collections filtered successfully");
+        } catch (error) {
+            console.error("Error filtering collections:", error);
+        }
+    }
+
+    // Function to create collection navigation tabs
+    function createCollectionTabs() {
+        const tabsContainer = document.querySelector(".joysprouts-tabs-container");
+        if (!tabsContainer) {
+            console.log("No tabs container found. Add class 'joysprouts-tabs-container' to create navigation tabs.");
+            return;
+        }
+
+        // Create tab navigation
+        const tabNav = document.createElement("div");
+        tabNav.className = "joysprouts-tab-nav";
+        tabNav.innerHTML = `
+            <button class="joysprouts-tab-btn active" data-tab="active">Active JoySprouts</button>
+            <button class="joysprouts-tab-btn" data-tab="completed">Completed JoySprouts</button>
+        `;
+
+        // Add click handlers for tabs
+        tabNav.addEventListener("click", (e) => {
+            if (e.target.classList.contains("joysprouts-tab-btn")) {
+                const tabType = e.target.getAttribute("data-tab");
+                switchTab(tabType);
+            }
+        });
+
+        tabsContainer.appendChild(tabNav);
+    }
+
+    // Function to switch between active and completed tabs
+    function switchTab(tabType) {
+        const activeCollection = document.querySelector(".joysprouts-active-collection");
+        const completedCollection = document.querySelector(".joysprouts-completed-collection");
+        const tabButtons = document.querySelectorAll(".joysprouts-tab-btn");
+
+        if (!activeCollection || !completedCollection) return;
+
+        // Update tab button states
+        tabButtons.forEach(btn => {
+            btn.classList.remove("active");
+            if (btn.getAttribute("data-tab") === tabType) {
+                btn.classList.add("active");
+            }
+        });
+
+        // Show/hide collections
+        if (tabType === "active") {
+            activeCollection.style.display = "block";
+            completedCollection.style.display = "none";
+        } else {
+            activeCollection.style.display = "none";
+            completedCollection.style.display = "block";
+        }
+    }
+
     // Run UI update on page load
     updateJoySproutsUI();
+    createCollectionTabs();
 
     // Handle button click for completing a JoySprouts
     const button = document.getElementById("complete-joysprouts-button");
@@ -160,8 +300,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
                 alert(`JoySprouts completed! Streak: ${newStreak}, Progress: ${completionPercent.toFixed(0)}%`);
 
-                // Refresh listing page UI
-                updateJoySproutsUI();
+                // Refresh collections and UI
+                await updateJoySproutsUI();
             } catch (error) {
                 console.error("Error updating member data:", error);
                 alert("An error occurred. Please try again.");
@@ -260,8 +400,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
                 alert(`JoySprouts completed! Streak: ${newStreak}, Progress: ${completionPercent.toFixed(0)}%`);
 
-                // Refresh listing page UI
-                updateJoySproutsUI();
+                // Refresh collections and UI
+                await updateJoySproutsUI();
             } catch (error) {
                 console.error("Error updating member data from listing:", error);
                 alert("An error occurred. Please try again.");
