@@ -1,412 +1,234 @@
 <script>
-// Add CSS styles for JoySprouts collections
-const style = document.createElement('style');
-style.textContent = `
-    .joysprouts-tab-nav {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 20px;
-    }
-    
-    .joysprouts-tab-btn {
-        padding: 10px 20px;
-        border: 2px solid #007bff;
-        background: white;
-        color: #007bff;
-        cursor: pointer;
-        border-radius: 5px;
-        font-weight: bold;
-        transition: all 0.3s ease;
-    }
-    
-    .joysprouts-tab-btn:hover {
-        background: #f8f9fa;
-    }
-    
-    .joysprouts-tab-btn.active {
-        background: #007bff;
-        color: white;
-    }
-    
-    .joysprouts-active-collection,
-    .joysprouts-completed-collection {
-        min-height: 200px;
-    }
-    
-    .joysprouts-completed-collection {
-        display: none;
-    }
-    
-    .joysprouts-item.completed {
-        opacity: 0.7;
-        border-left: 4px solid #28a745;
-    }
-    
-    .joysprouts-item.completed .complete-button {
-        background: #28a745 !important;
-        color: white !important;
-    }
-`;
-document.head.appendChild(style);
+async function JoySproutsMain() {
+  console.log("🌱 JoySproutsMain initialized");
 
-document.addEventListener("DOMContentLoaded", async () => {
-    console.log("JoySprouts script loaded");
+  const TOTAL_JOYSPROUTS = 30;
+  const badgeCheckpoints = [
+    { percent: 25, badge: "25-percent-badge", label: "25% Sprouted! You're on your way to blossoming." },
+    { percent: 50, badge: "50-percent-badge", label: "50% Sprouted! You're in full bloom." },
+    { percent: 75, badge: "75-percent-badge", label: "75% Sprouted! You're at the peak of your JoySprouts." },
+    { percent: 100, badge: "100-percent-badge", label: "You've completed all your JoySprouts!" },
+  ];
 
-    // Total number of JoySprouts (replace with actual number or fetch dynamically)
-    const TOTAL_JOYSPROUTS = 50; // Replace with your [#]
+  /* ---------- Styles ---------- */
+  const style = document.createElement("style");
+  style.textContent = `
+    .joysprouts-item {
+      transition: opacity 0.6s ease-in-out, transform 0.6s ease-in-out;
+      transform-origin: center center;
+      position: relative;
+      will-change: transform, opacity;
+    }
+    .joysprouts-item.removing {
+      opacity: 0;
+      transform: scale(0.9) translateY(25px);
+      pointer-events: none;
+      animation: dazzle 0.45s ease-in-out forwards;
+    }
+    @keyframes dazzle {
+      0% { box-shadow: 0 0 0 rgba(255,255,255,0); }
+      40% { box-shadow: 0 0 30px rgba(255,255,200,0.9); }
+      100% { box-shadow: 0 0 0 rgba(255,255,255,0); }
+    }
 
-    // Percentage-based badge checkpoints
-    const badgeCheckpoints = [
-        { percent: 25, badge: "25-percent-badge" },
-        { percent: 50, badge: "50-percent-badge" },
-        { percent: 75, badge: "75-percent-badge" },
-        { percent: 100, badge: "100-percent-badge" }
-    ];
+    /* ----- Badge visuals ----- */
+    .js-badge-icon {
+      width: 70px;
+      height: 70px;
+      object-fit: contain;
+      transition: filter 0.6s ease, opacity 0.6s ease, transform 0.3s ease;
+      filter: grayscale(100%) brightness(0.6) contrast(0.8);
+      opacity: 0.5;
+    }
+    .js-badge-icon.unlocked {
+      filter: none;
+      opacity: 1;
+      animation: badgeGlow 0.8s ease-in-out;
+    }
+    .js-badge-icon.unlocked:hover {
+      transform: scale(1.1);
+    }
+    @keyframes badgeGlow {
+      0% { box-shadow: 0 0 0 rgba(255,255,255,0); }
+      50% { box-shadow: 0 0 18px rgba(255,255,200,0.8); }
+      100% { box-shadow: 0 0 0 rgba(255,255,255,0); }
+    }
 
-    // Function to update visual state of JoySprouts (individual page and listing page)
-    async function updateJoySproutsUI() {
-        try {
-            console.log("Updating JoySprouts UI");
-            const { data: member } = await window.$memberstackDom.getCurrentMember();
-            if (!member) {
-                console.log("No member logged in");
-                return;
-            }
-            console.log("Member ID:", member.id);
+    .joysprout-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,1);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      opacity: 0;
+      animation: fadeIn .3s forwards;
+    }
+    .joysprout-popup {
+      background: #fff;
+      padding: 2rem 3rem;
+      border-radius: 16px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      animation: popIn .3s ease forwards;
+    }
+    @keyframes fadeIn { to { opacity: 1; } }
+    @keyframes popIn { from { transform: scale(.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  `;
+  document.head.appendChild(style);
 
-            const { data: memberData } = await window.$memberstackDom.getMemberJSON();
-            const completedJoySprouts = memberData?.completed_joysprouts || [];
-            console.log("Completed JoySprouts:", completedJoySprouts);
+  /* ---------- Push to Memberstack (JSON + Custom Fields) ---------- */
+  async function pushJoySproutsToMemberstack(updatedCompleted, badges, streakCount) {
+    try {
+      const { data: member } = await window.$memberstackDom.getCurrentMember();
+      if (!member) return;
 
-            // Update individual article page button
-            const button = document.getElementById("complete-joysprouts-button");
-            if (button) {
-                const joysproutsId = button.getAttribute("data-joysprouts-id");
-                console.log("Button found, ID:", joysproutsId);
-                if (completedJoySprouts.includes(joysproutsId)) {
-                    button.disabled = true;
-                    button.textContent = "Completed";
-                    button.classList.add("completed");
-                    console.log("Button updated to Completed state");
-                } else {
-                    console.log("JoySprouts not completed, button remains active");
-                }
-            } else {
-                console.warn("Button with ID 'complete-joysprouts-button' not found");
-            }
+      const { data: memberData } = await window.$memberstackDom.getMemberJSON();
+      const updated = {
+        ...memberData,
+        "completed-joysprouts": updatedCompleted,
+        "badges": badges,
+        "streak-count": streakCount,
+      };
 
-            // Filter collections based on completion status
-            await filterJoySproutsCollections(completedJoySprouts);
-        } catch (error) {
-            console.error("Error updating JoySprouts UI:", error);
+      await window.$memberstackDom.updateMemberJSON({ json: updated });
+      await window.$memberstackDom.updateMember({
+        fields: { 
+          "completed-joysprouts": updatedCompleted.join(","),
+          "streak-count": String(streakCount),
+        },
+      });
+
+      console.log("✅ Synced to Memberstack →", updatedCompleted, badges, streakCount);
+    } catch (err) {
+      console.error("❌ Error syncing JoySprouts → Memberstack:", err);
+    }
+  }
+
+  function showCompletionPopup() {
+    const overlay = document.createElement("div");
+    overlay.classList.add("joysprout-overlay");
+    overlay.innerHTML = `
+      <div class="joysprout-popup">
+        <h2>🌱 JoySprout Completed!</h2>
+        <p>Great job growing your joy today!</p>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.remove(), 3000);
+  }
+
+  /* ---------- Hide Completed JoySprouts ---------- */
+  async function hideCompletedJoySprouts() {
+    try {
+      const { data: memberData } = await window.$memberstackDom.getMemberJSON();
+      const completed = (memberData?.["completed-joysprouts"] || []).map(String);
+      const items = document.querySelectorAll("[data-joysprouts-id]");
+      items.forEach(item => {
+        const id = item.getAttribute("data-joysprouts-id");
+        if (completed.includes(id)) {
+          item.classList.add("removing");
+          setTimeout(() => item.remove(), 500);
         }
+      });
+    } catch (err) {
+      console.error("❌ Error hiding completed JoySprouts:", err);
     }
+  }
 
-    // Function to filter JoySprouts collections based on completion status
-    async function filterJoySproutsCollections(completedJoySprouts) {
-        try {
-            // Get all JoySprouts items from both collections
-            const allJoySproutsItems = document.querySelectorAll(".joysprouts-item");
-            console.log("Found", allJoySproutsItems.length, "JoySprouts items total");
+  /* ---------- Complete Button ---------- */
+  async function bindCompleteButton() {
+    const btn = document.getElementById("complete-joysprouts-button");
+    if (!btn) return;
 
-            // Separate items into active and completed collections
-            const activeCollection = document.querySelector(".joysprouts-active-collection");
-            const completedCollection = document.querySelector(".joysprouts-completed-collection");
-
-            if (!activeCollection || !completedCollection) {
-                console.warn("Collection containers not found. Please add classes 'joysprouts-active-collection' and 'joysprouts-completed-collection' to your collection containers.");
-                return;
-            }
-
-            // Clear existing content
-            activeCollection.innerHTML = "";
-            completedCollection.innerHTML = "";
-
-            // Process each JoySprouts item
-            allJoySproutsItems.forEach(item => {
-                const itemId = item.getAttribute("data-joysprouts-id");
-                const isCompleted = completedJoySprouts.includes(itemId);
-                
-                // Clone the item to avoid moving the original
-                const clonedItem = item.cloneNode(true);
-                
-                if (isCompleted) {
-                    // Add to completed collection
-                    clonedItem.classList.add("completed");
-                    const listButton = clonedItem.querySelector(".complete-button");
-                    if (listButton) {
-                        listButton.disabled = true;
-                        listButton.textContent = "Completed";
-                        listButton.classList.add("completed");
-                    }
-                    completedCollection.appendChild(clonedItem);
-                    console.log("Added to completed collection:", itemId);
-                } else {
-                    // Add to active collection
-                    activeCollection.appendChild(clonedItem);
-                    console.log("Added to active collection:", itemId);
-                }
-            });
-
-            console.log("Collections filtered successfully");
-        } catch (error) {
-            console.error("Error filtering collections:", error);
-        }
-    }
-
-    // Function to create collection navigation tabs
-    function createCollectionTabs() {
-        const tabsContainer = document.querySelector(".joysprouts-tabs-container");
-        if (!tabsContainer) {
-            console.log("No tabs container found. Add class 'joysprouts-tabs-container' to create navigation tabs.");
-            return;
+    btn.addEventListener("click", async () => {
+      try {
+        const card = btn.closest("[data-joysprouts-id]");
+        const checks = card ? card.querySelectorAll('input[type="checkbox"]') : [];
+        if (checks.length && ![...checks].every(c => c.checked)) {
+          alert("Please complete all three checklist items before marking this JoySprout complete 🌱");
+          return;
         }
 
-        // Create tab navigation
-        const tabNav = document.createElement("div");
-        tabNav.className = "joysprouts-tab-nav";
-        tabNav.innerHTML = `
-            <button class="joysprouts-tab-btn active" data-tab="active">Active JoySprouts</button>
-            <button class="joysprouts-tab-btn" data-tab="completed">Completed JoySprouts</button>
-        `;
+        const { data: memberData } = await window.$memberstackDom.getMemberJSON();
+        const user = {
+          "completed-joysprouts": memberData?.["completed-joysprouts"] || [],
+          "last-completion-date": memberData?.["last-completion-date"] || null,
+          "streak-count": memberData?.["streak-count"] || 0,
+          badges: memberData?.badges || [],
+        };
 
-        // Add click handlers for tabs
-        tabNav.addEventListener("click", (e) => {
-            if (e.target.classList.contains("joysprouts-tab-btn")) {
-                const tabType = e.target.getAttribute("data-tab");
-                switchTab(tabType);
-            }
+        const id = btn.getAttribute("data-joysprouts-id");
+        const now = new Date();
+        if (user["completed-joysprouts"].includes(String(id))) return;
+
+        user["completed-joysprouts"].push(String(id));
+
+        const lastDate = user["last-completion-date"]
+          ? new Date(user["last-completion-date"])
+          : null;
+        const diffDays = lastDate ? Math.round((now - lastDate) / 86400000) : 0;
+        const newStreak = diffDays === 1 ? user["streak-count"] + 1 : 1;
+
+        const pct = (user["completed-joysprouts"].length / TOTAL_JOYSPROUTS) * 100;
+        const newBadges = [...user.badges];
+
+        badgeCheckpoints.forEach(c => {
+          if (pct >= c.percent && !newBadges.includes(c.badge)) {
+            newBadges.push(c.badge);
+            alert(`🎉 You earned the ${c.label}`);
+          }
         });
 
-        tabsContainer.appendChild(tabNav);
-    }
+        await pushJoySproutsToMemberstack(
+          user["completed-joysprouts"],
+          newBadges,
+          newStreak
+        );
 
-    // Function to switch between active and completed tabs
-    function switchTab(tabType) {
-        const activeCollection = document.querySelector(".joysprouts-active-collection");
-        const completedCollection = document.querySelector(".joysprouts-completed-collection");
-        const tabButtons = document.querySelectorAll(".joysprouts-tab-btn");
+        showCompletionPopup();
+        btn.disabled = true;
+        btn.textContent = "Completed";
+        btn.classList.add("completed");
 
-        if (!activeCollection || !completedCollection) return;
-
-        // Update tab button states
-        tabButtons.forEach(btn => {
-            btn.classList.remove("active");
-            if (btn.getAttribute("data-tab") === tabType) {
-                btn.classList.add("active");
-            }
-        });
-
-        // Show/hide collections
-        if (tabType === "active") {
-            activeCollection.style.display = "block";
-            completedCollection.style.display = "none";
-        } else {
-            activeCollection.style.display = "none";
-            completedCollection.style.display = "block";
-        }
-    }
-
-    // Run UI update on page load
-    updateJoySproutsUI();
-    createCollectionTabs();
-
-    // Handle button click for completing a JoySprouts
-    const button = document.getElementById("complete-joysprouts-button");
-    if (button) {
-        console.log("Binding click event to button");
-        button.addEventListener("click", async () => {
-            try {
-                const { data: member } = await window.$memberstackDom.getCurrentMember();
-                if (!member) {
-                    console.log("Click attempted, but no member logged in");
-                    alert("Please log in to complete a JoySprouts.");
-                    return;
-                }
-
-                const joysproutsId = button.getAttribute("data-joysprouts-id");
-                console.log("Button clicked, JoySprouts ID:", joysproutsId);
-                const { data: memberData } = await window.$memberstackDom.getMemberJSON();
-                const userData = memberData || {
-                    completed_joysprouts: [],
-                    last_completion_date: null,
-                    streak_count: 0,
-                    badges: []
-                };
-
-                // Check daily limit
-                const today = new Date().toISOString().split("T")[0];
-                if (userData.last_completion_date === today) {
-                    console.log("Daily limit reached, last completion:", userData.last_completion_date);
-                    alert("You've already completed a JoySprouts today. Come back tomorrow!");
-                    return;
-                }
-
-                // Check if JoySprouts already completed
-                if (userData.completed_joysprouts.includes(joysproutsId)) {
-                    console.log("JoySprouts already completed:", joysproutsId);
-                    alert("You've already completed this JoySprouts.");
-                    return;
-                }
-
-                // Update completed JoySprouts
-                userData.completed_joysprouts.push(joysproutsId);
-                console.log("Added JoySprouts to completed:", joysproutsId);
-
-                // Calculate streak
-                const lastDate = userData.last_completion_date
-                    ? new Date(userData.last_completion_date)
-                    : null;
-                const todayDate = new Date(today);
-                let newStreak = userData.streak_count;
-                if (lastDate) {
-                    const oneDay = 24 * 60 * 60 * 1000;
-                    const diffDays = Math.round((todayDate - lastDate) / oneDay);
-                    newStreak = diffDays === 1 ? newStreak + 1 : 1;
-                    console.log("Streak calculated, diffDays:", diffDays, "newStreak:", newStreak);
-                } else {
-                    newStreak = 1;
-                    console.log("First completion, streak:", newStreak);
-                }
-
-                // Calculate completion percentage
-                const completionPercent = (userData.completed_joysprouts.length / TOTAL_JOYSPROUTS) * 100;
-                console.log("Completion percent:", completionPercent.toFixed(0) + "%");
-                const newBadges = [...userData.badges];
-                badgeCheckpoints.forEach(checkpoint => {
-                    if (completionPercent >= checkpoint.percent && !newBadges.includes(checkpoint.badge)) {
-                        newBadges.push(checkpoint.badge);
-                        console.log("Badge awarded:", checkpoint.badge);
-                        alert(`Congratulations! You've earned the ${checkpoint.badge}!`);
-                    }
-                });
-
-                // Update member JSON
-                const updatedData = {
-                    ...userData,
-                    completed_joysprouts: userData.completed_joysprouts,
-                    last_completion_date: today,
-                    streak_count: newStreak,
-                    badges: newBadges
-                };
-                await window.$memberstackDom.updateMemberJSON({ json: updatedData });
-                console.log("Member JSON updated:", updatedData);
-
-                // Update UI after completion
-                button.disabled = true;
-                button.textContent = "Completed";
-                button.classList.add("completed");
-                console.log("Button updated to Completed state after click");
-
-                alert(`JoySprouts completed! Streak: ${newStreak}, Progress: ${completionPercent.toFixed(0)}%`);
-
-                // Refresh collections and UI
-                await updateJoySproutsUI();
-            } catch (error) {
-                console.error("Error updating member data:", error);
-                alert("An error occurred. Please try again.");
-            }
-        });
-    } else {
-        console.warn("No button with ID 'complete-joysprouts-button' found on page");
-    }
-
-    // Handle button clicks in the listing page (optional)
-    const listingButtons = document.querySelectorAll(".complete-button");
-    console.log("Found", listingButtons.length, "listing page buttons");
-    listingButtons.forEach(btn => {
-        btn.addEventListener("click", async () => {
-            try {
-                const { data: member } = await window.$memberstackDom.getCurrentMember();
-                if (!member) {
-                    console.log("Listing button clicked, but no member logged in");
-                    alert("Please log in to complete a JoySprouts.");
-                    return;
-                }
-
-                const joysproutsId = btn.getAttribute("data-joysprouts-id");
-                console.log("Listing button clicked, JoySprouts ID:", joysproutsId);
-                const { data: memberData } = await window.$memberstackDom.getMemberJSON();
-                const userData = memberData || {
-                    completed_joysprouts: [],
-                    last_completion_date: null,
-                    streak_count: 0,
-                    badges: []
-                };
-
-                // Check daily limit
-                const today = new Date().toISOString().split("T")[0];
-                if (userData.last_completion_date === today) {
-                    console.log("Daily limit reached for listing button");
-                    alert("You've already completed a JoySprouts today. Come back tomorrow!");
-                    return;
-                }
-
-                // Check if JoySprouts already completed
-                if (userData.completed_joysprouts.includes(joysproutsId)) {
-                    console.log("JoySprouts already completed in listing:", joysproutsId);
-                    alert("You've already completed this JoySprouts.");
-                    return;
-                }
-
-                // Update completed JoySprouts
-                userData.completed_joysprouts.push(joysproutsId);
-                console.log("Added JoySprouts to completed from listing:", joysproutsId);
-
-                // Calculate streak
-                const lastDate = userData.last_completion_date
-                    ? new Date(userData.last_completion_date)
-                    : null;
-                const todayDate = new Date(today);
-                let newStreak = userData.streak_count;
-                if (lastDate) {
-                    const oneDay = 24 * 60 * 60 * 1000;
-                    const diffDays = Math.round((todayDate - lastDate) / oneDay);
-                    newStreak = diffDays === 1 ? newStreak + 1 : 1;
-                    console.log("Streak calculated for listing, diffDays:", diffDays, "newStreak:", newStreak);
-                } else {
-                    newStreak = 1;
-                    console.log("First completion from listing, streak:", newStreak);
-                }
-
-                // Calculate completion percentage
-                const completionPercent = (userData.completed_joysprouts.length / TOTAL_JOYSPROUTS) * 100;
-                console.log("Completion percent from listing:", completionPercent.toFixed(0) + "%");
-                const newBadges = [...userData.badges];
-                badgeCheckpoints.forEach(checkpoint => {
-                    if (completionPercent >= checkpoint.percent && !newBadges.includes(checkpoint.badge)) {
-                        newBadges.push(checkpoint.badge);
-                        console.log("Badge awarded from listing:", checkpoint.badge);
-                        alert(`Congratulations! You've earned the ${checkpoint.badge}!`);
-                    }
-                });
-
-                // Update member JSON
-                const updatedData = {
-                    ...userData,
-                    completed_joysprouts: userData.completed_joysprouts,
-                    last_completion_date: today,
-                    streak_count: newStreak,
-                    badges: newBadges
-                };
-                await window.$memberstackDom.updateMemberJSON({ json: updatedData });
-                console.log("Member JSON updated from listing:", updatedData);
-
-                // Update UI after completion
-                btn.disabled = true;
-                btn.textContent = "Completed";
-                btn.classList.add("completed");
-                console.log("Listing button updated to Completed state");
-
-                alert(`JoySprouts completed! Streak: ${newStreak}, Progress: ${completionPercent.toFixed(0)}%`);
-
-                // Refresh collections and UI
-                await updateJoySproutsUI();
-            } catch (error) {
-                console.error("Error updating member data from listing:", error);
-                alert("An error occurred. Please try again.");
-            }
-        });
+        await hideCompletedJoySprouts();
+        await displayProfileStats();
+      } catch (e) {
+        console.error("❌ Error completing JoySprout:", e);
+      }
     });
-});
+  }
+
+  /* ---------- Profile Stats + Badge Display ---------- */
+  async function displayProfileStats() {
+    const { data: memberData } = await window.$memberstackDom.getMemberJSON();
+    const completed = memberData?.["completed-joysprouts"]?.length || 0;
+    const streak = memberData?.["streak-count"] || 0;
+    const badges = memberData?.badges || [];
+
+    const completedEl = document.querySelector("[data-ms-member='completed-joysprouts']");
+    const streakEl = document.querySelector("[data-ms-member='streak-count']");
+    if (completedEl) completedEl.textContent = completed;
+    if (streakEl) streakEl.textContent = streak;
+
+    // Reset all badges to grayscale first
+    document.querySelectorAll(".js-badge-icon").forEach(icon => {
+      icon.classList.remove("unlocked");
+    });
+
+    // Unlock those that have been earned
+    badges.forEach(badgeId => {
+      const icon = document.querySelector(`.js-badge-icon[data-badge-id='${badgeId}']`);
+      if (icon) icon.classList.add("unlocked");
+    });
+  }
+
+  /* ---------- Init ---------- */
+  await hideCompletedJoySprouts();
+  await bindCompleteButton();
+  await displayProfileStats();
+}
+
+document.addEventListener("DOMContentLoaded", JoySproutsMain);
 </script>
